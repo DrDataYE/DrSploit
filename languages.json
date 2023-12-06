@@ -1,0 +1,21 @@
+{
+    "English": {
+        "Tool Name": "DrSploit",
+        "Version": "1.0",
+        "Description": "A security tool, designed for penetration testing and security vulnerability analysis.",
+        "Programming Language": "Python",
+        "Developer": "DrData",
+        "Release Date": "2023-12-06",
+        "Website": "https://drsploit.example.com"
+    },
+    "Arabic": {
+        "اسم الأداة": "DrSploit",
+        "الإصدار": "1.0",
+        "الوصف": "أداة أمنية شبيهة بـ Metasploit، مصممة لاختبار الاختراق وتحليل الثغرات الأمنية.",
+        "لغة البرمجة": "Python",
+        "المطور": "DrData",
+        "تاريخ الإصدار": "2023-12-06",
+        "الموقع الإلكتروني": "https://drsploit.example.com"
+    }
+}
+
