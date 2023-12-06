@@ -1,0 +1,3 @@
+#!/bin/bash
+
+cd /usr/opt/drsploit/ && python3 -B build.py "$@"
