@@ -7,8 +7,15 @@ import cmd
 import rich
 from pydoc import importfile
 from rich.table import Table
-from rich.console import Console 
+from rich.console import Console
+from rich.prompt import Prompt
+from rich import print
 from rich.live import Live
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.formatted_text import HTML
 from optparse import OptionParser
 from typing import IO
 import platform
@@ -17,10 +24,41 @@ from scripts.banners import sem
 from db.utils import search_json
 import subprocess
 from terminaltables import AsciiTable
-
-
+from textwrap import wrap
+import threading
 # الآن يمكن استخدام الوظائف والكائنات من module_name
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.styles import Style
+from prompt_toolkit.document import Document
+from prompt_toolkit.history import FileHistory
+from rich.text import Text
+import colorama
+colorama.init()
 
+# بقية الكود...
+
+class MyCompleter(Completer):
+    def __init__(self, cmd_instance):
+        self.cmd_instance = cmd_instance
+        
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        parts = text.split(' ')
+        if len(parts) > 1 and hasattr(self.cmd_instance, 'complete_' + parts[0]):
+            comp_func = getattr(self.cmd_instance, 'complete_' + parts[0])
+            line = document.text_before_cursor
+            begidx = document.cursor_position_col - len(parts[-1])
+            endidx = document.cursor_position_col
+            completions = comp_func(parts[-1], line, begidx, endidx)
+        else:
+            # استخدام الاكمال الافتراضي
+            completions = self.cmd_instance.completenames(parts[0])
+
+        for completion in completions:
+            yield Completion(completion, start_position=-len(parts[-1]))
 
 """
 
@@ -37,22 +75,24 @@ virsun = True
 console = Console()
 
 
-PURPLE = '\033[95m'
-CYAN = '\033[96m'
-DARKCYAN = '\033[36m'
-BLUE = '\033[94m'
-GREEN = '\033[92m'
-YELLOW = '\033[93m'
-RED = '\033[91m'
-BOLD = '\033[1m'
-UNDERLINE = '\033[4m'
-END = '\033[0m'
+# تعريف الألوان الجديدة
+PURPLE = '\033[95m'  # لا تغيير هنا
+CYAN = '\033[96m'    # لا تغيير هنا
+DARKCYAN = '\033[36m'  # لا تغيير هنا
+BLUE = '\033[34m'    # تغيير من 94 إلى 34 للون الأزرق الأغمق
+GREEN = '\033[32m'   # تغيير من 92 إلى 32 للون الأخضر الأغمق
+YELLOW = '\033[33m'  # لا تغيير هنا
+RED = '\033[31m'     # تغيير من 91 إلى 31 للون الأحمر الأغمق
+BOLD = '\033[1m'     # لا تغيير هنا
+UNDERLINE = '\033[4m'  # لا تغيير هنا
+END = '\033[0m'       # لا تغيير هنا
 
 
 class DRConsole(c.Cmd):
     def __init__(self,read=None, completekey: str = "tab", stdin: IO[str] | None = None, stdout: IO[str] | None = None) -> None:
         super().__init__(completekey, stdin, stdout)
-        self.prompt = "\033[4mdr >\033[0m"
+        # self.prompt = f"{BOLD}dr >{END}"#"\033[4mdr >\033[0m"
+        # self.prompt = HTML('<ansigreen>(MyCmd)</ansigreen> <ansiblue>></ansiblue> ')
         self.read = read
         self.S = Sort()
         self.readjson = self.S.readJsonFile()
@@ -187,7 +227,118 @@ class DRConsole(c.Cmd):
                 "Data": "{:os_vendor=>\"Actiontec\", :os_family=>\"embedded\", :os_version=>nil, :os_accuracy=>100, :os_match=>\"DD-WRT v24-sp2 (Linux 2.4.37)\"}"
             }
         ]
+        self.select = []
+        self.completer = MyCompleter(self)
+        self.session = PromptSession(
+            history=InMemoryHistory(),
+            # history=FileHistory('~/.myhistory'),
+            auto_suggest=AutoSuggestFromHistory(),
+            completer=self.completer,
+            style=Style.from_dict({
+                'completion-menu.completion': 'bg:#008888 #ffffff',
+                'completion-menu.completion.current': 'bg:#00aaaa #000000',
+                # Prompt.
+                'username': 'white',
+                'at':       'white',
+                'colon':    'white',
+                'pound':    'white',
+                'host':     'white',
+                'path':     'red',
+            }),
+            complete_in_thread=True,
+        )
+        self.prompt = [
+            ('class:username', 'dr'),
+            
+            ('class:pound',    '>'),
+        ]
+    # # Override the cmdloop to use rich prompt
+    # def cmdloop(self, intro=None):
+    #     print(self.intro)
+    #     while True:
+    #         try:
+    #             line = Prompt.ask(self.prompt, choices=self.get_names(), default='')
+    #             if line and line != 'EOF':
+    #                 self.onecmd(line)
+    #             else:
+    #                 print("[bold red]Exiting...[/bold red]")
+    #                 break
+    #         except KeyboardInterrupt:
+    #             print("\n[bold red]Interrupted[/bold red]")
+    # def cmdloop(self, intro=None):
+    #     """Repeatedly issue a prompt, accept input, parse an initial prefix
+    #     off the received input, and dispatch to action methods, passing them
+    #     the remainder of the line as argument.
 
+    #     """
+
+    #     self.preloop()
+    #     if self.use_rawinput and self.completekey:
+    #         try:
+    #             import readline
+    #             self.old_completer = readline.get_completer()
+    #             readline.set_completer(self.complete)
+    #             readline.parse_and_bind(self.completekey+": complete")
+    #         except ImportError:
+    #             pass
+    #     try:
+    #         if intro is not None:
+    #             self.intro = intro
+    #         if self.intro:
+    #             self.stdout.write(str(self.intro)+"\n")
+    #         stop = None
+    #         while not stop:
+    #             if self.cmdqueue:
+    #                 line = self.cmdqueue.pop(0)
+    #             else:
+    #                 if self.use_rawinput:
+    #                     try:
+    #                         line = input(self.prompt)
+    #                     except EOFError:
+    #                         line = 'EOF'
+    #                 else:
+    #                     self.stdout.write(self.prompt)
+    #                     self.stdout.flush()
+    #                     line = self.stdin.readline()
+    #                     if not len(line):
+    #                         line = 'EOF'
+    #                     else:
+    #                         line = line.rstrip('\r\n')
+    #             line = self.precmd(line)
+    #             stop = self.onecmd(line)
+    #             stop = self.postcmd(stop, line)
+    #         self.postloop()
+    #     finally:
+    #         if self.use_rawinput and self.completekey:
+    #             try:
+    #                 import readline
+    #                 readline.set_completer(self.old_completer)
+    #             except ImportError:
+    #                 pass
+    def get_prompt(self):
+        # استخدام Text من rich مباشرة
+        return Text("[bold]dr >[/]", style="prompt")
+    def cmdloop(self, intro=None):
+        self.preloop()
+        if intro is not None:
+            self.intro = intro
+        if self.intro:
+            print(self.intro)
+        stop = None
+        while not stop:
+            try:
+                # console.print(self.prompt,end="")
+                line = self.session.prompt(self.prompt, complete_in_thread=True)
+            except EOFError:
+                line = 'EOF'
+            except KeyboardInterrupt:
+                console.print("[red][-][white] Use 'exit -y' to leave")
+                continue
+
+            line = self.precmd(line)
+            stop = self.onecmd(line)
+            stop = self.postcmd(stop, line)
+        self.postloop()
 
     def default(self,line):
         self.exec(line)
@@ -199,25 +350,21 @@ class DRConsole(c.Cmd):
        
                 
                     
-    def exec(self,command):
-
+    def exec(self, command):
         if platform.system() == "Windows":
-            # try:
-            #     # تنفيذ الأمر والتقاط الإخراج
-            #     subprocess.run(command,capture_output=True,  check=True)
-
-            #     print(f"The command '{command}' exists in the system.")
-            # except subprocess.CalledProcessError:
-            #     print(f"The command '{command}' does not exist in the system.")
-            if os.system(f"where {command} > nul 2>&1") == 0:
-                print("x")
+            # تحقق من وجود الأمر
+            if subprocess.run(f"where {command}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                # تنفيذ الأمر وطباعة الإخراج
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                print(result.stdout)
             else:
                 print("Command Not Found")
         else:
-            if os.system("command -v %s >/dev/null"%(command)) == 0:
-                print("exec:",command)
-                x = os.system(command)
-                print(x)
+            # تحقق من وجود الأمر
+            if subprocess.run(f"command -v {command}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                # تنفيذ الأمر وطباعة الإخراج
+                result = subprocess.run(command, shell=True, capture_output=True, text=True)
+                print(result.stdout)
             else:
                 print("Command Not Found")
 
@@ -298,6 +445,8 @@ show info for the currently active module.
                     if i in var:
                         table.add_row(str(x),Dicts[i]['name'],Dicts[i]['date'],"nurmal","no",Dicts[i]['description'])
                         x += 1
+                        self.select.append(str(i))
+
 
 
 
@@ -320,20 +469,27 @@ show info for the currently active module.
     def do_use(self,args):
         try:
             int(args)
-            self.moduleIndex = 0
-            if int(args) in self.moduleIndex:
-                file_path = './modules/auxiliary/scanner/example.py'
-                if platform.system() == "Windows":
-                    inps = ((file_path.replace("./modules/","")).rsplit("/"))
-                else:
-                    inps = ((file_path.replace("./modules/","")).rsplit("/"))
-            else:
-                console.print("[red][-][white] Invalid module index:")
+            # self.moduleIndex = 0
+            
+            file_path = self.select[int(args)]
+            inps = ((file_path.replace("./modules/","")).rsplit("/"))
+            # console.print("[red][-][white] Invalid module index:")
+            # print(file_path)
             self.module = importfile(file_path)
             inps[-1] = inps[-1].replace(".py","")
-            inps = "%sdr%s %s(%s%s"%(UNDERLINE,END,inps[0],RED,BOLD)+ "/".join(inps[1:])+"%s) >"%(END)
-            self.pprompt(line=inps)
+            self.message = [
+                ('class:username', 'dr'),
+                ('class:at',       ' '),
+                ('class:host',     inps[0]),
+                ('class:colon',    '('),
+                ('class:path',     "/".join(inps[1:])),
+                ('class:pound',    ') >'),
+            ]
+            self.pprompt(line=self.message)
             self.used_module = "True"
+            self.select = []
+        except IndexError:
+            console.print("[red][-][white] Invalid module index:")
         except:
             file_path = "./modules/"+args+".py"
             if platform.system() == "Windows":
@@ -343,15 +499,29 @@ show info for the currently active module.
 
             self.module = importfile(file_path)
             inps[-1] = inps[-1].replace(".py","")
-            inps = "%sdr%s %s(%s%s"%(UNDERLINE,END,inps[0],RED,BOLD)+ "/".join(inps[1:])+"%s) >"%(END)
-            self.pprompt(line=inps) 
+            self.message = [
+                ('class:username', 'dr'),
+                ('class:at',       ' '),
+                ('class:host',     inps[0]),
+                ('class:colon',    '('),
+                ('class:path',     "/".join(inps[1:])),
+                ('class:pound',    ') >'),
+            ]
+            self.pprompt(line=self.message) 
             self.used_module = "True"
 
 
         
     def do_run(self,args):
         if self.module is not None:
-            self.module.hii()
+            if "-j" in args:
+                self.data.update({"start": 0})
+                # إنشاء خيط جديد لتشغيل الدالة run
+                thread = threading.Thread(target=self.module.run, args=(self.data,))
+                thread.start()  # بدء تشغيل الخي
+            else:
+                self.data.update({"start":1})
+                self.module.run(self.data)
         
 
     def complete_use(self, text, line, begidx, endidx):
@@ -465,12 +635,17 @@ OPTIONS:
     
     def complete_set(self, text, line, begidx, endidx):
         """مكمل للأمر hello."""
-        options = ['ConsoleLogging', 'Prompt', 'SessionTlvLogging','LogLevel','PromptChar','TimestampOutput','MeterpreterPrompt','PromptTimeFormat','MinimumRank','SessionLogging']
-        # And lhosts rhosts lports rports ....etc
+        static_options = ['ConsoleLogging', 'Prompt', 'SessionTlvLogging', 'LogLevel', 'PromptChar', 'TimestampOutput', 'MeterpreterPrompt', 'PromptTimeFormat', 'MinimumRank', 'SessionLogging']
+        dynamic_options = list(self.module.metadata['options'].keys())  # الحصول على أسماء الخيارات من metadata
+
+        # دمج القوائم
+        options = static_options + dynamic_options
+
         if text:
             completions = [option for option in options if option.startswith(text)]
         else:
             completions = options
+
         return completions
 
 
@@ -495,7 +670,12 @@ OPTIONS:
 
 
     def do_back(self,args):
-        self.pprompt("dr>")
+        self.prompt = [
+            ('class:username', 'dr'),
+            
+            ('class:pound',    ' >'),
+        ]
+        self.pprompt(self.prompt)
         self.module = None  
         self.used_module = None                
         
@@ -504,22 +684,109 @@ OPTIONS:
         sem()
         modsum = self.readDirs
 
-        table_data = [
-            ['=[ drsploit v1.0-dev ]='],
-            ['+ -- --=[ {} exploits - {} auxiliary - {} post ]'.format(modsum['exploits'],modsum['auxiliary'],modsum['posts'])],
-            ['+ -- --=[ {} payloads - {} encoders - {} nops  ]'.format(modsum['payloads'],modsum['encoders'],modsum['nops'])],
-            ['+ -- --=[ {} evasion                         ]'.format(modsum['evasion'])]
+        # table_data = [
+        #     ['=[ drsploit v1.0-dev ]='],
+        #     ['+ -- --=[ {} exploits - {} auxiliary - {} post ]'.format(modsum['exploits'],modsum['auxiliary'],modsum['posts'])],
+        #     ['+ -- --=[ {} payloads - {} encoders - {} nops  ]'.format(modsum['payloads'],modsum['encoders'],modsum['nops'])],
+        #     ['+ -- --=[ {} evasion                         ]'.format(modsum['evasion'])]
+        # ]
+
+        # # إنشاء الجدول
+        # table = AsciiTable(table_data)
+
+        # console.print(table.table)
+        # إنشاء نص التصميم
+        from rich.panel import Panel
+        from rich.text import Text
+        title = Text("DrSploit v1.0.0", style="bold red")
+        description = Text("[bold green]Advanced Penetration Testing Framework\t\t\t", style="bold green")
+        # stats = Text(
+        #     "{} exploits - {} auxiliary - {} post\n"
+        #     "{} payloads - {} encoders - {} nops\n"
+        #     "{} evasion - Enhanced DrSploit Functionality".format(modsum['exploits'],modsum['auxiliary'],modsum['posts'],modsum['payloads'],modsum['encoders'],modsum['nops'],modsum['evasion'])
+        #     ,style="bold yellow"
+        # )
+        # إنشاء كائن Text وتطبيق الأنماط
+        stats = Text()
+
+        # إضافة البيانات مع ألوان ورموز مميزة
+        stats.append("[bold red] ", style="bold red")
+        stats.append("[bold blue]{} exploits ".format(modsum['exploits']), style="bold blue")
+        stats.append("[bold white] - ", style="bold white")
+        stats.append("[bold green]", style="bold green")
+        stats.append("[bold magenta]{} auxiliary ".format(modsum['auxiliary']), style="bold magenta")
+        stats.append(" [bold white]- ", style="bold white")
+        stats.append("[bold cyan] ", style="bold cyan")
+        stats.append("[bold yellow]{} post\n".format(modsum['posts']))
+
+        stats.append("[bold red] ", style="bold red")
+        stats.append("[bold blue]{} payloads".format(modsum['payloads']), style="bold blue")
+        stats.append(" [bold white]- ", style="bold white")
+        stats.append("[bold green] ", style="bold green")
+        stats.append("[bold magenta]{} encoders".format(modsum['encoders']), style="bold magenta")
+        stats.append("[bold white] - ", style="bold white")
+        stats.append("[bold cyan] ", style="bold cyan")
+        stats.append("[bold yellow]{} nops\n".format(modsum['nops']), style="bold yellow")
+
+        stats.append(" ", style="bold red")
+        stats.append("[bold blue]{} evasion".format(modsum['evasion']), style="bold blue")
+        # stats.append("[bold green] - ", style="bold green")
+        # stats.append("[bold magenta]Enhanced DrSploit Functionality", style="bold magenta")
+        # إنشاء البانل
+        panel = Panel.fit(
+            "\n".join([str(description), str(stats)]), 
+            title=title, 
+            border_style="blue", 
+            padding=(1, 2)
+        )
+
+        # عرض التصميم
+        console.print(panel)
+        import random
+
+        # قائمة التلميحات
+        tips = [
+            "DrSploit tip: Use the [green]help[/green] command to view detailed descriptions of commands.",
+            "DrSploit tip: Display an awesome DrSploit banner with the [green]banner'[/green] command.",
+            "DrSploit tip: Change the current working directory using the [green]cd[/green] command.",
+            "DrSploit tip: Toggle color in the console output with the [green]color[/green] command.",
+            "DrSploit tip: Communicate with a host using the [green]connect[/green] command.",
+            "DrSploit tip: Get debugging information with the [green]debug[/green] command.",
+            "DrSploit tip: Exit the console neatly using the [green]exit[/green] command.",
+            "DrSploit tip: Learn about new and upcoming features with the [green]features[/green] command.",
+            "DrSploit tip: Use [green]get[/green] to retrieve the value of a context-specific variable.",
+            "DrSploit tip: Use the [green]getg[/green] command to retrieve the value of a global variable across modules."
+            "DrSploit tip: Filter command output using the [green]grep[/green] command for efficient data analysis.",
+            "DrSploit tip: Keep track of your command history for easy repetition with the [green]history[/green] command.",
+            "DrSploit tip: Load and use powerful plugins with the [green]load[/green] command.",
+            "DrSploit tip: Exit the console gracefully with the [green]quit[/green] command, similar to [green]exit[/green].",
+            "DrSploit tip: Use the [green]repeat[/green] command to automate the repetition of a series of commands.",
+            "DrSploit tip: Route traffic through an established session using the [green]route[/green] command.",
+            "DrSploit tip: Remember to save your session settings with the [green]save[green] command for future use.",
+            "DrSploit tip: Manage and interact with active sessions using the [green]sessions[/green] command.",
+            "DrSploit tip: Use the [green]set[/green] command to specify a variable's value for the current module.",
+            "DrSploit tip: Take a break with the [green]sleep[/green] command, which pauses execution for a specified time.",
+            "DrSploit tip: Log console output to a file while viewing it on-screen with the [green]spool[green] command.",
+            "DrSploit tip: Monitor and control background threads with the [green]threads[/green] command.",
+            "DrSploit tip: Explore a variety of useful productivity tips with the [green]tips[/green] command.",
+            "DrSploit tip: Unload a previously loaded plugin with the [green]unload[/green] command.",
+            "DrSploit tip: Remove a variable's value in the current context with the [green]unset[/green] command.",
+            "DrSploit tip: Clear the value of a global variable using the [green]unsetg[/green] command.",
+            "DrSploit tip: Check the current version of the DrSploit framework with the [green]version[/green] command.",
         ]
 
-        # إنشاء الجدول
-        table = AsciiTable(table_data)
+        # اختيار تلميح عشوائي وطباعته
+        selected_tip = random.choice(tips)
+        console.print(selected_tip)
+        console.print("DrSploit Documentation: https://drsploit.readthedocs.io/",end="\n\n")
 
-        console.print(table.table)
+
 
     def do_search(self,args):
         search_results = search_json(json_data=self.readjson,search_word=args)
         print("\nSearch ",args.capitalize(),sep="")
         print("="*len(args),end="\n\n")
+        args = args.capitalize()
         
             
         table = Table()
@@ -535,16 +802,59 @@ OPTIONS:
         x = 0
         vs = []
         dicts = {}
-        v = ""
-        for var in search_results:
-            for i in var['keys']:
-                v += " ".join(i)
-                x+=1
-            console.print(dicts)
+        
+        S = Sort()
+        Dicts = self.readjson
+        with Live(table, refresh_per_second=4) as live:  # update 4 times a second to feel fluid
+            x = 0
+            lists = []
+            for var in search_results:
+                if var['keys'][0] in lists:
+                    continue
+                # table.add_row(str(x),var['keys'][0],var['value'])
+                table.add_row(str(x),str(Dicts[var['keys'][0]]['name']).capitalize().replace(args,"[green]"+args+"[/green]"),Dicts[var['keys'][0]]['date'],"nurmal","no",str(Dicts[var['keys'][0]]['description']).capitalize().replace(args,"[green]"+args+"[/green]"))
+                lists.append(var['keys'][0])
+                x += 1
+                self.select.append(str(var['keys'][0]))
 
-    def do_db_nmap(self,args):
-        pprint()
 
+
+    def do_db_nmap(self, args):
+        from lib.dr.core.auxiliary.drnmap import drnmap,pprint,msg_help  # تأكد من الاستيراد الصحيح
+        args = args.split()
+        if not args:
+            console.print(msg_help)
+            return
+        port = "1-10000"
+        target = []
+        console.print(args)
+        # تحليل الوسيطات
+        for i in args:  # استخدم args بدلاً من sys.argv
+            if '--help' == i or '-h' == i:
+                console.print(msg_help)
+
+            elif '.' in i:
+                target.append(i)
+            elif '-p' in i:
+                port_index = args.index(i) + 1
+                if port_index < len(args):
+                    port = args[port_index]
+
+        # المسح الضوئي
+        with console.status("Scanning .....") as status:
+            try:
+                scan_result, list_port = drnmap(' '.join(target), port, ' '.join(args))
+                pprint(scan_result, list_port)
+            except Exception as e:
+                console.print(f"An error occurred: {e}")
+
+                
+                
+
+
+
+
+    
     def do_hosts(self, arg):
         args = arg.split()
         if not args:
@@ -675,14 +985,56 @@ For example:  sessions -s checkvm -i 1,3-5  or  sessions -k 1-2,5,6
             self.print_global_options()
         elif subcommand == "-h" or subcommand == "--help":
             self.print_global_options_help()
+    
 
+    def print_wrapped(self,title, content, indent=2, width=50):
+        """طباعة نص مع التغليف والتنسيق."""
+        
+        print(f"{' ' * indent}{title}")
+        wrapped_text = wrap(content, width=width)
+        for line in wrapped_text:
+            console.print(f"{' ' * (indent + 2)}{line}")
     def print_global_options(self):
-        print("\nGlobal Options")
-        print("=" * 20 + "\n")
-        print("   Option             Current Setting    Description")
-        print("   ------             ---------------    -----------")
-        for option, value in self.global_options.items():
-            print(f"   {option:<20} {value:<18} {self.get_option_description(option)}")
+        
+        # طباعة المعلومات الأساسية
+        basic_keys = ['name', 'module', 'license', 'rank', 'disclosed','date']
+        for key in basic_keys:
+            if key in  self.module.metadata:
+                print(f"    {key.capitalize()}: {self.module.metadata[key]}")
+
+        # طباعة الأشخاص المساهمين
+        if 'authors' in self.module.metadata:
+            print("\nProvided by:")
+            for author in self.module.metadata['authors']:
+                print(f"  {author}")
+
+        # طباعة الخيارات
+        if 'options' in self.module.metadata:
+            print("\nBasic options:")
+            print("  Name       Current Setting  Required  Description")
+            print("  ----       ---------------  --------  -----------")
+            for option, details in self.module.metadata['options'].items():
+                setting = str(details.get('default', ' '))
+                required = str(details.get('required', 'no'))
+                description = str(details.get('description', ' '))
+                wrapped_description = '\n'.join(wrap(description, width=40))
+                print(f"  {option:<10} {setting:<15} {required:<8} {wrapped_description}")
+
+        # طباعة الوصف
+        if 'description' in self.module.metadata:
+            self.print_wrapped("\nDescription:", self.module.metadata['description'])
+
+        # طباعة المراجع
+        if 'references' in self.module.metadata:
+            print("\nReferences:")
+            for reference in self.module.metadata['references']:
+                print(f"  {reference['ref']}")
+
+        # طباعة الأسماء الأخرى
+        if 'aka' in self.module.metadata:
+            self.print_wrapped("\nAlso known as:", self.module.metadata['aka'])
+
+        print("\nView the full module info with the info -d command.")
 
     def get_option_description(self, option):
         descriptions = {
@@ -840,7 +1192,7 @@ Core Commands
 Command       Description
 -------       -----------
 ?             Help menu
-banner        Display an awesome metasploit banner
+banner        Display an awesome DrSploit banner
 cd            Change the current working directory
 color         Toggle color
 connect       Communicate with a host
