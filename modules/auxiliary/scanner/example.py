@@ -57,7 +57,5 @@ def run(args):
 
     logging.info('{}...'.format(r.text[0:50]))
 
-def hii():
-    print("Hello World")
 if __name__ == '__main__':
     pass
